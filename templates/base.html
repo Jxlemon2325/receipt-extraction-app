@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Receipt Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Optional: Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">Grocery Tracker</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+          {% if 'user_id' in session %}
+              <li class="nav-item"><a class="nav-link" href="/receipts">Upload Receipts</a></li>
+              <li class="nav-item"><a class="nav-link" href="/dashboard">Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link" href="/receipts_table">View Receipts</a></li>
+              <li class="nav-item"><a class="nav-link text-warning" href="/logout">Logout</a></li>
+          {% else %}
+              <li class="nav-item"><a class="nav-link" href="/login">Login</a></li>
+              <li class="nav-item"><a class="nav-link" href="/register">Register</a></li>
+          {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4 flex-grow-1">
+    {% block content %}
+    {% endblock %}
+</div>
+
+<!-- Footer -->
+<footer class="bg-dark text-white py-3 mt-auto">
+    <div class="container text-center">
+        <p>&copy; 2025 Grocery Tracker | All Rights Reserved</p>
+    </div>
+</footer>
+
+<!-- Custom Styles -->
+<style>
+    .table-sm td, .table-sm th {
+        padding: 0.3rem;
+        font-size: 0.85rem;
+    }
+    .table-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    /* Navbar Link Hover Effect */
+    .navbar-nav .nav-link:hover {
+        background-color: #555;
+        border-radius: 5px;
+    }
+
+    /* Active Link Styling */
+    .navbar-nav .nav-item.active .nav-link {
+        color: #fff;
+        background-color: #007bff;
+        border-radius: 5px;
+    }
+
+    /* Footer Styling */
+    footer {
+        background-color: #343a40;
+    }
+    
+    footer p {
+        margin-bottom: 0;
+    }
+
+    /* Custom Table Styling */
+    .table-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+</style>
+
+<!-- Bootstrap JS (for toggling navbar, modals, etc.) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>

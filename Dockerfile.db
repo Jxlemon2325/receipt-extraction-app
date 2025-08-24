@@ -1,0 +1,5 @@
+FROM postgres:16-alpine
+ENV POSTGRES_DB=grocery_receipt_group_db \
+    POSTGRES_USER=receipt_user_test \
+    POSTGRES_PASSWORD=DADE1234
+COPY db/init.sql /docker-entrypoint-initdb.d/001-init.sql

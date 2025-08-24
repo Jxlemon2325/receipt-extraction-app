@@ -1,0 +1,297 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center text-primary">Receipt Dashboard</h2>
+    <hr>
+
+    <!-- Search & Filter Section -->
+    <form method="get" action="/dashboard" class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="description">Description</label>
+            <input type="text" id="description" class="form-control" name="description" placeholder="e.g. milk" value="{{ request.args.get('description', '') }}">
+        </div>
+        <div class="col-md-4">
+            <label for="company">Company</label>
+            <select class="form-select" name="company" multiple>
+                {% for c in company_options %}
+                    <option value="{{ c }}" {% if c in selected_companies %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+            <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple</small>
+        </div>
+        <div class="col-md-3">
+            <label for="start_date">Start Purchase Date</label>
+            <input type="date" class="form-control" name="start_date" value="{{ request.args.get('start_date', '') }}">
+        </div>
+        <div class="col-md-3">
+            <label for="end_date">End Purchase Date</label>
+            <input type="date" class="form-control" name="end_date" value="{{ request.args.get('end_date', '') }}">
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-success w-100">Search</button>
+        </div>
+    </form>
+
+    <!-- Export Button -->
+    <form method="get" action="{{ url_for('download_csv') }}" class="text-end">
+        <input type="hidden" name="description" value="{{ request.args.get('description', '') }}">
+        <input type="hidden" name="start_date" value="{{ request.args.get('start_date', '') }}">
+        <input type="hidden" name="end_date" value="{{ request.args.get('end_date', '') }}">
+        {% for c in selected_companies %}
+            <input type="hidden" name="company" value="{{ c }}">
+        {% endfor %}
+        <button type="submit" class="btn btn-info">Export to Excel</button>
+    </form>
+
+    <!-- Receipt Table -->
+    {% if not df_for_table.empty %}
+    <div class="table-container mt-4" style="max-height: 500px; overflow-y: auto;">
+        <table id="df-table" class="table table-striped table-bordered table-sm">
+            <thead class="table-dark">
+                <tr>
+                    {% for col in df_for_table.columns %}
+                    <th class="sortable" data-col="{{ loop.index0 }}" style="cursor:pointer;">
+                        {{ col }} <span class="sort-arrow" style="opacity:.5;"></span>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for _, row in df_for_table.iterrows() %}
+                <tr>
+                    {% for col in df_for_table.columns %}
+                    <td>{{ row[col] }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mt-4">No matching items found.</div>
+    {% endif %}
+
+    <!-- Summary Section -->
+    {% if summary %}
+    <div class="row mt-4">
+        <div class="col-md-4">
+            <div class="alert alert-secondary">Most Common Item: <strong>{{ summary.most_common }}</strong></div>
+        </div>
+        <div class="col-md-4">
+            <div class="alert alert-warning">Highest Tax Paid: <strong>${{ '%.2f' % summary.highest_tax }}</strong></div>
+        </div>
+        <div class="col-md-4">
+            <div class="alert alert-danger">Most Expensive Item: <strong>{{ summary.most_expensive.desc }}</strong> at ${{ '%.2f' % summary.most_expensive.price }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Charts Section -->
+    <div class="row mt-4">
+        {% if 'line_chart_data' in charts %}
+        <div class="col-md-6">
+            <h5>Monthly Spending Trend</h5>
+            <div id="lineChart"></div>
+        </div>
+        {% endif %}
+        {% if 'pie_chart_data' in charts %}
+        <div class="col-md-6">
+            <h5>Top 5 Spending</h5>
+            <div id="pieChart"></div>
+        </div>
+        {% endif %}
+        {% if 'bar_chart_data' in charts %}
+        <div class="col-md-12 mt-4">
+            <h5>Top 5 Frequently Bought Items (Receipts)</h5>
+            <div id="barChart"></div>
+        </div>
+        {% endif %}
+
+        {% if 'price_trend_data' in charts %}
+        <div class="col-md-12 mt-4">
+            <h5>Unit Price Trend for "{{ request.args.get('description', '') }}"</h5>
+            <div id="priceTrendChart"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if charts.cheapest_info %}
+    <div class="mt-3">
+        <h6>Cheapest Unit Prices</h6>
+        <ul>
+            {% for item in charts.cheapest_info %}
+            <li><strong>{{ item.description }}</strong>: ${{ '%.2f' % item.price }} on {{ item.date }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Plotly Scripts -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<!-- Table sorting + charts + autocomplete -->
+<script>
+/* ========= TABLE SORT (robust dates & numbers) ========= */
+(function () {
+  const table = document.getElementById('df-table');
+  if (!table) return;
+
+  const ths = table.querySelectorAll('thead th.sortable');
+  let sortState = { col: null, dir: 'asc' };
+
+  ths.forEach(th => {
+    th.addEventListener('click', () => {
+      const col = parseInt(th.dataset.col, 10);
+      const dir = (sortState.col === col && sortState.dir === 'asc') ? 'desc' : 'asc';
+      sortState = { col, dir };
+      sortTable(table, col, dir);
+      updateArrows(ths, th, dir);
+    });
+  });
+
+  function updateArrows(allThs, activeTh, dir) {
+    allThs.forEach(t => {
+      const a = t.querySelector('.sort-arrow');
+      if (a) a.textContent = '';
+    });
+    const arrow = activeTh.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = dir === 'asc' ? '▲' : '▼';
+  }
+
+  function cellOrderVal(td) {
+    // Prefer a machine-sortable hint if present
+    const ord = td.getAttribute('data-order');
+    if (ord !== null) {
+      const n = Number(ord);
+      if (!Number.isNaN(n)) return { type: 'number', value: n };
+      // fall back to string compare for non-numeric data-order
+      return { type: 'string', value: String(ord).toLowerCase() };
+    }
+    return normalize(td.innerText);
+  }
+
+  function looksLikeISODate(t) {
+    // e.g., "2025-08-12" or "2025-08-12 10:22:05"
+    return /\b\d{4}-\d{2}-\d{2}\b/.test(t);
+  }
+
+  function normalize(text) {
+    const t = (text || '').trim();
+    if (!t) return { type: 'string', value: '' };
+
+    // 1) DATE FIRST (avoid parsing "2025-08-01" as number 2025)
+    if (looksLikeISODate(t)) {
+      const d = Date.parse(t.replace(' ', 'T'));
+      if (!Number.isNaN(d)) return { type: 'date', value: d };
+    }
+
+    // 2) NUMBER (currency, commas, parentheses as negatives), but skip date-y strings
+    const hyphenCount = (t.match(/-/g) || []).length;
+    const cleaned = t
+      .replace(/\((.*)\)/, '-$1')    // (123.45) => -123.45
+      .replace(/[^\d.,\-]/g, '')     // keep digits, dot, comma, minus
+      .replace(/,/g, '');            // remove thousands separators
+    if (hyphenCount < 2 && cleaned !== '' && /^-?\d*\.?\d+$/.test(cleaned)) {
+      const num = Number(cleaned);
+      if (!Number.isNaN(num)) return { type: 'number', value: num };
+    }
+
+    // 3) STRING
+    return { type: 'string', value: t.toLowerCase() };
+  }
+
+  function sortTable(table, colIndex, direction) {
+    const tbody = table.tBodies[0];
+    const rows = Array.from(tbody.rows);
+
+    rows.sort((a, b) => {
+      const A = cellOrderVal(a.cells[colIndex]);
+      const B = cellOrderVal(b.cells[colIndex]);
+
+      // Type precedence: number > date > string
+      const rank = { number: 3, date: 2, string: 1 };
+      if (A.type !== B.type) {
+        return (rank[A.type] - rank[B.type]) * (direction === 'asc' ? 1 : -1);
+      }
+
+      if (A.type === 'number' || A.type === 'date') {
+        return (A.value - B.value) * (direction === 'asc' ? 1 : -1);
+      }
+      return A.value.localeCompare(B.value, undefined, { numeric: true, sensitivity: 'base' }) * (direction === 'asc' ? 1 : -1);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+  }
+})();
+
+/* ========= PLOTLY (unchanged logic) ========= */
+document.addEventListener('DOMContentLoaded', function () {
+  {% if 'line_chart_data' in charts %}
+    Plotly.newPlot('lineChart', {{ charts['line_chart_data']|safe }}, {{ charts['line_chart_layout']|safe }});
+  {% endif %}
+  {% if 'pie_chart_data' in charts %}
+    Plotly.newPlot('pieChart', {{ charts['pie_chart_data']|safe }}, {{ charts['pie_chart_layout']|safe }});
+  {% endif %}
+  {% if 'bar_chart_data' in charts %}
+    Plotly.newPlot('barChart', {{ charts['bar_chart_data']|safe }}, {{ charts['bar_chart_layout']|safe }});
+  {% endif %}
+  {% if 'price_trend_data' in charts %}
+    Plotly.newPlot('priceTrendChart', {{ charts['price_trend_data']|safe }}, {{ charts['price_trend_layout']|safe }});
+  {% endif %}
+});
+
+/* ========= AUTOCOMPLETE (unchanged logic) ========= */
+document.addEventListener('DOMContentLoaded', function () {
+  const input = document.getElementById('itemSearch');
+  const suggestionsBox = document.getElementById('suggestions');
+  if (!input || !suggestionsBox) return;
+
+  input.addEventListener('input', async function () {
+    const query = this.value;
+    if (query.length < 2) {
+      suggestionsBox.innerHTML = '';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/autocomplete?q=${encodeURIComponent(query)}`);
+      const items = await res.json();
+
+      suggestionsBox.innerHTML = '';
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'suggestion';
+        div.textContent = item;
+        div.onclick = () => {
+          addItemToChart(item);
+          input.value = '';
+          suggestionsBox.innerHTML = '';
+        };
+        suggestionsBox.appendChild(div);
+      });
+    } catch (e) {
+      // fail silently; keep UI responsive
+      suggestionsBox.innerHTML = '';
+    }
+  });
+});
+
+function addItemToChart(item) {
+  const selected = document.getElementById('selectedItems');
+  if (!selected) return;
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'items';
+  input.value = item;
+  selected.appendChild(input);
+
+  const tag = document.createElement('span');
+  tag.className = 'badge bg-info text-dark m-1';
+  tag.textContent = item;
+  selected.appendChild(tag);
+}
+</script>
+
+{% endblock %}

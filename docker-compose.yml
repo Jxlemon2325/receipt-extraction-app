@@ -1,0 +1,33 @@
+version: "3.9"
+services:
+  db:
+    image: jiaxian2325/local-cloud-db:v2
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-grocery_receipt_group_db}
+      POSTGRES_USER: ${POSTGRES_USER:-receipt_user_test}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-DADE1234}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-receipt_user_test} -d ${POSTGRES_DB:-grocery_receipt_group_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    image: jiaxian2325/local-cloud-app:v4
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-receipt_user_test}:${POSTGRES_PASSWORD:-DADE1234}@db:5432/${POSTGRES_DB:-grocery_receipt_group_db}
+
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-receipt_user_test}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-DADE1234}
+      PGDATABASE: ${POSTGRES_DB:-grocery_receipt_group_db}
+    ports:
+      - "5000:5000"   # Dockerfile exposes 5000
+volumes:
+  dbdata:

@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- Upload/Processing Status -->
+<div id="uploadStatus" class="alert alert-info text-center" style="display: none;"></div>
+
+<div class="mb-3">
+    <button class="btn btn-outline-primary" onclick="toggleSection('manualSection')">Manual Entry</button>
+    <button class="btn btn-outline-info" onclick="toggleSection('cameraSection')">Use Camera</button>
+</div>
+
+<!-- Manual Entry Section -->
+<div id="manualSection" style="display:none;">
+    <h2>Manual Receipt Entry</h2>
+    <form method="POST">
+        <input type="hidden" name="form_type" value="manual_entry">
+
+        <div class="row mb-3">
+            <div class="col">
+                <label>Company Name</label>
+                <select name="company_name" class="form-control">
+                    <option>Sheng Siong</option>
+                    <option>Cold Storage</option>
+                    <option>FairPrice</option>
+                    <option>Giant</option>
+                </select>
+            </div>
+            <div class="col">
+                <label>Date</label>
+                <input type="date" name="purchase_date" class="form-control" required>
+            </div>
+            <div class="col">
+                <label>Taxes (GST)</label>
+                <input type="number" step="0.01" name="taxes" class="form-control">
+            </div>
+        </div>
+
+        <div id="item-container">
+            <div class="row item-row mb-2">
+                <div class="col"><input name="description[]" class="form-control" placeholder="Description" required></div>
+                <div class="col"><input name="quantity[]" type="number" step="0.01" class="form-control" placeholder="Quantity" required></div>
+                <div class="col"><input name="unit_price[]" type="number" step="0.01" class="form-control" placeholder="Unit Price" required></div>
+                <div class="col"><input name="discount[]" class="form-control" placeholder="Discount (5% or $1)"></div>
+            </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary mb-2" onclick="addItem()">+ Add Item</button>
+        <button type="submit" class="btn btn-primary mb-2">Submit Receipt</button>
+    </form>
+</div>
+
+<!-- Camera Section -->
+<div id="cameraSection" style="display:none;">
+    <h2>Capture Receipt via Camera</h2>
+    <select id="cameraSelect" class="form-control mb-2"></select>
+    <video id="video" width="100%" autoplay style="border:1px solid #ccc; max-width: 400px;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <br>
+    <button class="btn btn-warning" onclick="captureImage()">Capture</button>
+    <button class="btn btn-danger" onclick="retakeImage()">Retake</button>
+    <button class="btn btn-success" onclick="uploadCapturedImage()">Upload Captured Receipt</button>
+</div>
+
+<!-- Upload Section -->
+<div class="upload-section mt-4">
+    <h2>Upload Receipts (PDF, JPG, PNG)</h2>
+    <form id="uploadForm" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="form_type" value="upload">
+        <input type="file" name="receipt_files" id="receipt_files" multiple accept=".pdf,.jpg,.jpeg,.png" class="form-control mb-2">
+        <button type="submit" class="btn btn-success">Process Uploaded Files</button>
+    </form>
+</div>
+
+<!-- Hidden form for camera image upload -->
+<form id="cameraUploadForm" method="POST" enctype="multipart/form-data" style="display: none;">
+    <input type="hidden" name="form_type" value="upload">
+    <input type="file" name="receipt_files" id="cameraImageInput">
+</form>
+
+<!-- Toggle Embedded Table Button -->
+<button class="btn btn-primary mt-3" onclick="toggleEmbeddedTable()">
+    Show/Hide Embedded Table Below
+</button>
+
+<!-- Embedded Table -->
+<div id="iframeContainer" style="display: none; margin-top: 1rem;">
+    <iframe src="{{ url_for('view_receipts') }}" width="100%" height="600px" style="border:none;"></iframe>
+</div>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Scripts -->
+<script>
+// Toggle sections (Manual Entry or Camera)
+function toggleSection(id) {
+    document.getElementById('manualSection').style.display = 'none';
+    document.getElementById('cameraSection').style.display = 'none';
+
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+
+    if (id === 'cameraSection') {
+        startCamera();
+    }
+
+    document.getElementById(id).style.display = 'block';
+}
+
+// Add new item fields
+function addItem() {
+    const row = document.querySelector('.item-row').cloneNode(true);
+    row.querySelectorAll('input').forEach(input => input.value = '');
+    document.getElementById('item-container').appendChild(row);
+}
+
+// Clear file input value when clicked
+document.getElementById("receipt_files").addEventListener("click", function(e) {
+    this.value = null;
+});
+
+// Show status message when form is being submitted
+document.getElementById("uploadForm").addEventListener("submit", function () {
+    const statusBox = document.getElementById("uploadStatus");
+    statusBox.innerText = "Uploading receipt files, please wait...";
+    statusBox.className = "alert alert-info text-center";
+    statusBox.style.display = "block";
+});
+
+let stream;
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const cameraSelect = document.getElementById('cameraSelect');
+
+// Load available cameras
+async function loadCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(device => device.kind === 'videoinput');
+    cameraSelect.innerHTML = '';
+    cameras.forEach(camera => {
+        const option = document.createElement('option');
+        option.value = camera.deviceId;
+        option.text = camera.label || `Camera ${cameraSelect.length + 1}`;
+        cameraSelect.appendChild(option);
+    });
+}
+
+// Start camera stream
+async function startCamera() {
+    await loadCameras();
+    const selectedCamera = cameraSelect.value;
+    stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: selectedCamera ? { exact: selectedCamera } : undefined }
+    });
+    video.srcObject = stream;
+}
+
+// Capture image from video
+function captureImage() {
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+    canvas.style.display = 'block';
+}
+
+// Retake captured image
+function retakeImage() {
+    canvas.style.display = 'none';
+}
+
+// Upload captured image
+function uploadCapturedImage() {
+    const statusBox = document.getElementById("uploadStatus");
+    statusBox.innerText = "Uploading captured image...";
+    statusBox.className = "alert alert-info text-center";
+    statusBox.style.display = "block";
+
+    canvas.toBlob(blob => {
+        if (!blob) {
+            statusBox.innerText = "Could not capture image.";
+            statusBox.className = "alert alert-danger text-center";
+            return;
+        }
+
+        const file = new File([blob], "captured.png", { type: "image/png" });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        document.getElementById("cameraImageInput").files = dt.files;
+
+        // Submit the hidden form
+        document.getElementById("cameraUploadForm").submit();
+    }, 'image/png');
+}
+
+// Toggle Embedded Table Visibility
+function toggleEmbeddedTable() {
+    const iframeContainer = document.getElementById('iframeContainer');
+    iframeContainer.style.display = iframeContainer.style.display === 'none' ? 'block' : 'none';
+}
+
+// Load cameras when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    loadCameras();
+});
+</script>
+
+{% endblock %}

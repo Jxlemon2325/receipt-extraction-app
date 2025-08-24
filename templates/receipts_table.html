@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center text-primary">Receipts Table</h2>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Filter form -->
+    <form method="POST" action="{{ url_for('receipts_table') }}" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <label for="company_name">Company</label>
+            <select name="company_name" class="form-select">
+                <option value="">All</option>
+                {% for company in companies %}
+                    <option value="{{ company }}" {% if filters.company_name == company %}selected{% endif %}>{{ company }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="purchase_date">Purchase Date</label>
+            <input type="date" name="purchase_date" value="{{ filters.purchase_date }}" class="form-control">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary me-2">Apply Filter</button>
+            <a href="{{ url_for('receipts_table') }}" class="btn btn-secondary">Reset</a>
+        </div>
+        <div class="col-md-2 d-flex align-items-end justify-content-end">
+            <a href="{{ url_for('export_receipts_csv') }}" class="btn btn-success">Export CSV</a>
+        </div>
+    </form>
+
+    <!-- Bulk delete form -->
+    <form id="bulk-delete-form" method="POST" action="{{ url_for('delete_multiple') }}">
+        <table class="table mt-4 table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th><input type="checkbox" id="select_all"></th>
+                    <th>Receipt ID</th>
+                    <th>Company</th>
+                    <th>Purchase Date</th>
+                    <th>Upload Date</th>
+                    <th>Total After Tax</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for receipt in receipts %}
+                <tr>
+                    <td><input type="checkbox" name="selected_receipts" value="{{ receipt['receipt_id'] }}"></td>
+                    <td>{{ receipt["receipt_id"] }}</td>
+                    <td>{{ receipt["company_name"] }}</td>
+                    <td>{{ receipt["purchase_date"] }}</td>
+                    <td>{{ receipt["upload_date"] }}</td>
+                    <td id="total-{{ receipt['receipt_id'] }}">${{ "%.2f"|format((receipt["total_after_tax"] or 0) | float) }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-info" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#items-{{ receipt['receipt_id'] }}">
+                            View
+                        </button>
+
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger"
+                                form="bulk-delete-form"
+                                formaction="{{ url_for('delete_receipt_route', receipt_id=receipt['receipt_id']) }}"
+                                formmethod="POST"
+                                onclick="return confirm('Delete this receipt?')">
+                            Delete
+                        </button>
+                        <!-- NEW: Edit -->
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editReceiptModal"
+                                data-receipt-id="{{ receipt['receipt_id'] }}"
+                                data-company="{{ receipt['company_name'] }}"
+                                data-purchase-date="{{ receipt['purchase_date'] or '' }}"
+                                data-taxes="{{ receipt['taxes'] if receipt['taxes'] is not none else '' }}"
+                                data-override="{{ '1' if receipt.get('total_after_tax_override') else '0' }}"
+                                data-total-after-tax="{{ receipt['total_after_tax'] if receipt['total_after_tax'] is not none else '' }}">
+                        Edit
+                        </button>
+                    </td>
+                </tr>
+                <tr class="collapse" id="items-{{ receipt['receipt_id'] }}">
+                    <td colspan="6">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Description</th>
+                                    <th>Qty</th>
+                                    <th>Unit Price</th>
+                                    <th>Discount</th>
+                                    <th>Original Price</th>
+                                    <th>Final Price (After discount)</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if receipt['receipt_id'] in items_by_receipt %}
+                                {% set ns = namespace(subtotal=0, discount_total=0) %}
+                                {% for item in items_by_receipt[receipt["receipt_id"]] %}
+                                    {% set ns.subtotal = ns.subtotal + item["original_price"] %}
+                                    {% set ns.discount_total = ns.discount_total + (item["original_price"] - item["discounted_price"]) %}
+                                    <tr>
+                                        <td><input type="checkbox" name="selected_items" value="{{ item['id'] }}"></td>
+                                        <td>{{ item["description"] }}</td>
+                                        <td>{{ item["quantity"] }}</td>
+                                        <td>{{ item["unit_price"] }}</td>
+                                        <td>{{ item["discount"] }}</td>
+                                        <td>${{ "%.2f"|format(item["original_price"]) }}</td>
+                                        <td>${{ "%.2f"|format(item["total_price"]) }}</td>
+                                        <td>
+                                            <!-- Single item delete -->
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    form="bulk-delete-form"
+                                                    formaction="{{ url_for('delete_item_route', item_id=item['id'], receipt_id=receipt['receipt_id']) }}"
+                                                    formmethod="POST"
+                                                    onclick="return confirm('Delete this item?')">
+                                                Delete
+                                            </button>
+                                            <a href="{{ url_for('edit_item_route', item_id=item['id']) }}"
+                                               class="btn btn-sm btn-outline-primary">Edit</a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                <tr class="table-secondary fw-bold">
+                                    <td colspan="5" class="text-end">Subtotal:</td>
+                                    <td colspan="2" id="subtotal-{{ receipt['receipt_id'] }}">${{ "%.2f"|format(ns.subtotal) }}</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                                <tr class="table-secondary fw-bold">
+                                    <td colspan="5" class="text-end">Total Discount:</td>
+                                    <td colspan="2" id="discount-{{ receipt['receipt_id'] }}">${{ "%.2f"|format(ns.discount_total) }}</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                                <tr class="table-secondary fw-bold">
+                                    <td colspan="5" class="text-end">Tax:</td>
+                                    <td colspan="2" id="tax-{{ receipt['receipt_id'] }}">${{ "%.2f"|format((receipt["taxes"] or 0) | float) }}</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                                <tr class="table-secondary fw-bold">
+                                    <td colspan="5" class="text-end">After Tax:</td>
+                                    <td colspan="2" id="total-{{ receipt['receipt_id'] }}">${{ "%.2f"|format((receipt["total_after_tax"] or 0) | float) }}</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="9" class="text-center">No items found for this receipt.</td></tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <!-- Bulk delete button -->
+        <button type="submit" class="btn btn-danger mb-4"
+                onclick="return confirm('Delete selected receipts/items?')">
+            Delete Selected
+        </button>
+    </form>
+
+    <!-- Edit Receipt Modal -->
+    <div class="modal fade" id="editReceiptModal" tabindex="-1" aria-labelledby="editReceiptLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content" method="POST" id="edit-receipt-form">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editReceiptLabel">Edit Receipt</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Company</label>
+                        <input type="text" class="form-control" name="company_name" id="edit-company" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Purchase Date</label>
+                        <input type="date" class="form-control" name="purchase_date" id="edit-purchase-date" pattern="\d{4}-\d{2}-\d{2}">
+                        <div class="form-text">YYYY-MM-DD</div>
+                    </div>
+
+                    <div class="mb-0 mt-3">
+                        <label class="form-label">Taxes (amount)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" min="0" class="form-control" name="taxes" id="edit-taxes">
+                        </div>
+                        <div class="form-text">Enter the tax amount (not %). Leave blank to keep existing.</div>
+                    </div>
+
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="enable-manual-total" name="enable_manual_total" value="1">
+                        <label class="form-check-label" for="enable-manual-total">Set manual “Total After Tax”</label>
+                    </div>
+
+                    <div class="mb-0 mt-2">
+                        <label class="form-label">Total After Tax</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" min="0" class="form-control" name="total_after_tax" id="edit-total-after-tax" disabled>
+                        </div>
+                        <div class="form-text">Leave unchecked to auto-calculate from items + taxes.</div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <nav>
+        <ul class="pagination justify-content-center">
+            {% for p in range(1, total_pages + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('receipts_table', page=p, company_name=filters.company_name, purchase_date=filters.purchase_date) }}">{{ p }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    </nav>
+
+</div>
+
+<script>
+// Select All functionality for checkboxes
+document.getElementById("select_all").addEventListener("change", function () {
+    const checkboxes = document.querySelectorAll("input[type='checkbox'][name='selected_receipts'], input[name='selected_items']");
+    checkboxes.forEach(cb => cb.checked = this.checked);
+});
+</script>
+
+<script>
+// Toggle manual total input inside modal
+document.addEventListener('DOMContentLoaded', function () {
+  const modal = document.getElementById('editReceiptModal');
+  modal.addEventListener('change', function (ev) {
+    if (ev.target.id === 'enable-manual-total') {
+      const chk = ev.target;
+      const totalInput = modal.querySelector('#edit-total-after-tax');
+      totalInput.disabled = !chk.checked;
+      if (!chk.checked) {
+        totalInput.value = ''; // clear if unchecked
+      }
+    }
+  });
+});
+</script>
+
+<script>
+// Edit receipt modal functionality
+document.addEventListener('show.bs.modal', function (ev) {
+  const modal = ev.target;
+  if (modal.id !== 'editReceiptModal') return;
+
+  const btn = ev.relatedTarget;
+
+  const receiptId   = btn.getAttribute('data-receipt-id');
+  const company     = btn.getAttribute('data-company') || '';
+  const purchaseDate= btn.getAttribute('data-purchase-date') || '';
+  const taxes       = btn.getAttribute('data-taxes') || '';
+  const overrideStr = btn.getAttribute('data-override') || '0';
+  const manualTotal = btn.getAttribute('data-total-after-tax') || '';
+
+  modal.querySelector('#edit-company').value = company;
+  modal.querySelector('#edit-purchase-date').value = purchaseDate;
+
+  const taxesInput = modal.querySelector('#edit-taxes');
+  if (taxesInput) taxesInput.value = taxes;
+
+  const chk = modal.querySelector('#enable-manual-total');
+  const totalInput = modal.querySelector('#edit-total-after-tax');
+
+  const isOverride = overrideStr === '1';
+  chk.checked = isOverride;
+  totalInput.disabled = !isOverride;
+  totalInput.value = isOverride ? manualTotal : '';  // only prefill when override on
+
+  const form = modal.querySelector('#edit-receipt-form');
+  form.action = "{{ url_for('edit_receipt', receipt_id='__RID__') }}".replace('__RID__', receiptId);
+});
+</script>
+
+{% endblock %}

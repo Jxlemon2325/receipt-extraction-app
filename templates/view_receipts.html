@@ -1,0 +1,145 @@
+<h2 class="text-center mb-4">All Receipts</h2>
+
+{% if receipts %}
+    {% for receipt in receipts %}
+    <div class="card mb-4 shadow-sm border border-secondary">
+        <div class="card-header bg-light">
+            <strong>{{ receipt.company_name }}</strong> — {{ receipt.purchase_date }}
+        </div>
+        <div class="card-body">
+            
+            <!-- Totals Table -->
+            <h5 class="mb-3">Receipt Totals:</h5>
+            <table class="custom-table">
+                <tbody>
+                    <tr class="total-row">
+                        <td class="label"><strong>Total Before Tax:</strong></td>
+                        <td class="value">${{ receipt.total_before_tax }}</td>
+                    </tr>
+                    <tr class="tax-row">
+                        <td class="label"><strong>Taxes:</strong></td>
+                        <td class="value">${{ receipt.taxes }}</td>
+                    </tr>
+                    <tr class="after-tax-row">
+                        <td class="label"><strong>Total After Tax:</strong></td>
+                        <td class="value">${{ receipt.total_after_tax }}</td>
+                    </tr>
+                    <tr class="discount-row">
+                        <td class="label"><strong>Total Discount:</strong></td>
+                        <td class="value">${{ receipt.total_discount }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Items Table -->
+            <h5 class="mt-3">Items:</h5>
+            <div class="table-responsive">
+                <table class="custom-items-table">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Discount</th>
+                            <th>Original Price</th>
+                            <th>Unit Price After Discount</th>
+                            <th>Final Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in items_by_receipt[receipt.receipt_id] %}
+                        <tr>
+                            <td>{{ item.description }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>${{ item.unit_price }}</td>
+                            <td>{{ item.discount }}</td>
+                            <td>${{ item.original_price }}</td>
+                            <td>${{ item.unit_price_after_discount }}</td>
+                            <td>${{ item.total_price }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <hr>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <p class="text-center">No receipts found.</p>
+{% endif %}
+
+<style>
+    /* Table Styles */
+    .custom-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+
+    .custom-table td, .custom-items-table td {
+        padding: 10px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+
+    .custom-table .label {
+        background-color: #f7f7f7;
+        font-weight: bold;
+        width: 50%;
+    }
+
+    .custom-table .value {
+        background-color: #fff;
+        font-weight: normal;
+    }
+
+    .total-row {
+        background-color: #e0f7fa; 
+    }
+
+    .tax-row {
+        background-color: #fff9c4; 
+    }
+
+    .after-tax-row {
+        background-color: #c8e6c9; /
+    }
+
+    .discount-row {
+        background-color: #ffccbc; 
+    }
+
+    /* Items Table */
+    .custom-items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    .custom-items-table th, .custom-items-table td {
+        padding: 10px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+
+    .custom-items-table th {
+        background-color: #f1f1f1;
+        font-weight: bold;
+    }
+
+    .custom-items-table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    .custom-items-table tr:hover {
+        background-color: #f1f1f1;
+    }
+
+    h5 {
+        color: #4CAF50;
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+</style>

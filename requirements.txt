@@ -1,0 +1,15 @@
+pandas
+google-generativeai
+opencv-python-headless
+numpy
+av
+Flask
+werkzeug
+plotly
+psycopg2-binary
+pytz
+openpyxl
+python-dotenv
+supabase
+vecs
+sentence-transformers
