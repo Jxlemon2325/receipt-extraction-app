@@ -274,7 +274,7 @@ def _insert_postgres(receipt, user_id, conn=None):
 
     # Prepare list of items to insert
     items_to_insert = []
-    # cache to hold family name mappings for this file
+    # cache to hold family name mappings for this file (cache and adding happens in get_family name function)
     cache = {} 
     for item in receipt.get("items", []):
         try:
@@ -348,7 +348,7 @@ def _insert_supabase(receipt, user_id, supabase):
         "upload_date": datetime.now().date().isoformat(),  # Use current date as upload date
     }).execute()
 
-    # Prepare list of items and cache existing families for this file
+    # Prepare list of items and cache existing families for this file (cache and adding the name to exisiting dict happens in get_family name function)
     items = []
     existing_families = {}  
 
@@ -2501,4 +2501,4 @@ def download_csv():
 
 #run app
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
