@@ -239,7 +239,7 @@ def get_family_name(item_description, existing_families, cur=None, db_type=None,
                     "family_embedding": item_vec.reshape(-1).tolist()
                 }).execute()
 
-    # Cache correctly: norm_desc is family_name
+    # add created family name to this temporary dict
     existing_families[norm_desc] = best_family_name
     return best_family_name
 
