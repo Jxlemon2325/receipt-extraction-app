@@ -1,4 +1,4 @@
-1. Replace the Api_key and Supabase_key with actual the actual API keys
+1. Replace the Api_key and Supabase_key with actual the actual API keys in .env file
 
 2. Select the backend based on requirements.
 "supabase" connects to a cloud database hosted on Supabase.
